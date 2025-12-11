@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Camera Test</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #000;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+    #video {
+      width: 100%;
+      max-width: 640px;
+      border: 2px solid #4ade80;
+      border-radius: 8px;
+    }
+    #status {
+      margin: 20px 0;
+      padding: 10px;
+      background: #1a1a1a;
+      border-radius: 4px;
+    }
+    button {
+      padding: 12px 24px;
+      background: #4ade80;
+      color: black;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      margin: 10px 5px;
+    }
+    button:hover {
+      background: #22c55e;
+    }
+  </style>
+</head>
+<body>
+  <h1>Camera Test</h1>
+  <div id="status">Initializing...</div>
+  <video id="video" autoplay playsinline></video>
+  <div>
+    <button onclick="startCamera()">Start Camera</button>
+    <button onclick="stopCamera()">Stop Camera</button>
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const status = document.getElementById('status');
+    let stream = null;
+
+    async function startCamera() {
+      try {
+        status.textContent = 'Requesting camera...';
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        });
+        video.srcObject = stream;
+        status.textContent = '✓ Camera working!';
+        status.style.color = '#4ade80';
+      } catch (error) {
+        status.textContent = '✗ Error: ' + error.message;
+        status.style.color = '#ef4444';
+        console.error('Camera error:', error);
+      }
+    }
+
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+        video.srcObject = null;
+        status.textContent = 'Camera stopped';
+        status.style.color = '#fff';
+      }
+    }
+
+    // Auto-start on load
+    window.addEventListener('load', () => {
+      setTimeout(startCamera, 500);
+    });
+  </script>
+</body>
+</html>
+

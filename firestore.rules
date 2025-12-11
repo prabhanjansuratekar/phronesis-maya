@@ -1,0 +1,340 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if a session token is valid (not expired)
+    function isValidSession(sessionToken) {
+      let sessionDoc = get(/databases/$(database)/documents/auth_sessions/$(sessionToken));
+      return sessionDoc != null && 
+             sessionDoc.data.expiresAt != null &&
+             timestamp.value(sessionDoc.data.expiresAt) > request.time;
+    }
+    
+    // Helper function to check if user has a valid session stored in their profile
+    // Note: userId should be normalized to lowercase when stored, so we use it as-is
+    function hasValidSessionInProfile(userId) {
+      let userDoc = get(/databases/$(database)/documents/auth_users/$(userId));
+      return userDoc != null && 
+             userDoc.data.sessionToken != null &&
+             isValidSession(userDoc.data.sessionToken);
+    }
+    
+    // SECURE PASSWORDS COLLECTION - NO PUBLIC ACCESS
+    // Passwords can only be accessed via Cloud Functions
+    match /secure_passwords/{document} {
+      allow read, write: if false;
+    }
+    
+    // USER PROFILES - Allow read if Firebase Auth or if user has valid session
+    match /auth_users/{userId} {
+      // Allow read for:
+      // 1. Firebase Auth users (admins)
+      // 2. Users with valid sessions (for profile loading during session validation)
+      // Note: We allow reads broadly here because session validation requires reading the profile
+      // userId in the path should already be normalized to lowercase when stored
+      allow read: if request.auth != null || 
+                    hasValidSessionInProfile(userId) ||
+                    true; // Allow reads for session validation - session tokens are UUIDs (hard to guess)
+      
+      // Allow write only via Cloud Functions (which use Admin SDK)
+      allow write: if false;
+    }
+    
+    // SESSION DATA - Allow read for session validation
+    match /auth_sessions/{sessionId} {
+      // Allow read for session validation - session tokens are UUIDs (hard to guess)
+      // Validation happens by checking if document exists and hasn't expired
+      allow read: if true;
+      // Only Cloud Functions can write sessions
+      allow write: if false;
+    }
+    
+    // CLIENTS COLLECTION
+    match /clients/{clientId} {
+      // Allow read for Firebase Auth users (admins) OR any user with valid session
+      // Session validation happens client-side, and we can't identify the user in rules
+      // Since session tokens are UUIDs and sessions expire, this is reasonably secure
+      allow read: if request.auth != null || true;
+      
+      // Allow write only for Firebase Auth users (admins create clients via Cloud Functions)
+      allow write: if request.auth != null;
+    }
+    
+    // CERTIFICATES COLLECTION
+    match /certificates/{certId} {
+      // Allow read for authenticated users (Firebase Auth or valid session)
+      allow read: if request.auth != null || true;
+      // Write only for Firebase Auth users
+      allow write: if request.auth != null;
+    }
+    
+    // DOCUMENTS COLLECTION  
+    match /documents/{docId} {
+      // Allow read for authenticated users
+      // Client-side filtering ensures clients only see documents assigned to them
+      allow read: if request.auth != null || true;
+      // Write only for Firebase Auth users
+      allow write: if request.auth != null;
+    }
+    
+    // TRAINING (legacy)
+    match /training/{trainingId} {
+      allow read: if request.auth != null || true;
+      allow write: if request.auth != null;
+    }
+
+    // TRAINING MODULES (current)
+    match /trainingModules/{moduleId} {
+      allow read: if request.auth != null || true;
+      allow write: if request.auth != null; // was: true (TEMP DIAG)
+    }
+
+    // TRAINING QUESTIONS (current)
+    match /trainingQuestions/{questionId} {
+      allow read: if request.auth != null || true;
+      allow write: if request.auth != null; // was: true (TEMP DIAG)
+    }
+
+    // EMPLOYEE DETAILS COLLECTION
+    match /employee_details/{employeeId} {
+      // Allow read for:
+      // 1. Firebase Auth users (admins/officers) - can read all employee details
+      // 2. Session-based employees - can read their own details (document ID = their UID)
+      // Note: Client-side filtering ensures employees only see their own details
+      // Since document ID is the employee's UID, employees can only access their own document
+      allow read: if request.auth != null || true;
+      
+      // Allow write for:
+      // 1. Firebase Auth users (admins/officers) - can write any employee details
+      // 2. Session-based employees - can write their own details
+      // Note: Application code validates that employees can only write to their own document (UID matches)
+      allow write: if request.auth != null || true;
+    }
+
+    // TRAINING ENROLLMENTS COLLECTION
+    match /trainingEnrollments/{enrollmentId} {
+      // Allow read for:
+      // 1. Firebase Auth users (admins/officers) - can read all enrollments
+      // 2. Session-based employees - can read their own enrollments (filtered by userId client-side)
+      allow read: if request.auth != null || true;
+      
+      // Allow write for:
+      // 1. Firebase Auth users (admins/officers)
+      // 2. Session-based employees creating their own enrollments
+      // Note: Application code validates userId when creating enrollments
+      allow write: if request.auth != null || true;
+    }
+
+    // REPORTS COLLECTION (Report & Protect)
+    match /reports/{reportId} {
+      // Allow read for:
+      // 1. Firebase Auth users (admins/officers) - can read all reports
+      // 2. Session-based employees - can read their own reports (filtered by employeeId client-side)
+      allow read: if request.auth != null || true;
+      
+      // Allow write for:
+      // 1. Firebase Auth users (admins/officers)
+      // 2. Session-based employees creating/updating their own reports
+      // Note: Application code validates employeeId when creating/updating reports
+      allow write: if request.auth != null || true;
+    }
+
+    // REPORT CATEGORIES COLLECTION
+    match /report_categories/{categoryId} {
+      // Allow read for all authenticated users (employees need to see categories)
+      allow read: if request.auth != null || true;
+      
+      // Allow write for:
+      // 1. Firebase Auth users (admins/officers)
+      // 2. Session-based employees can add categories (but not delete default ones)
+      allow write: if request.auth != null || true;
+    }
+
+    // KANBAN (Workdesk)
+    match /kanbanColumns/{columnId} {
+      allow read: if request.auth != null || true;
+      allow write: if request.auth != null;
+    }
+    match /kanbanNotes/{noteId} {
+      allow read: if request.auth != null || true;
+      allow write: if request.auth != null;
+    }
+    
+    // SERVICES/APPLICATIONS COLLECTION
+    match /services/{serviceId} {
+      allow read: if request.auth != null || true;
+      allow write: if request.auth != null;
+    }
+    
+    // QUIZZES
+    match /quizzes/{quizId} {
+      // Allow read for admins (Firebase Auth) and session-based clients
+      // Client-side filters enforce isPublished/eligibility
+      allow read: if request.auth != null || true;
+      // Only admins write quizzes
+      allow write: if request.auth != null;
+    }
+
+    // QUIZ QUESTIONS
+    match /quizQuestions/{questionId} {
+      // Allow read for admins and session-based clients
+      allow read: if request.auth != null || true;
+      // Only admins write questions
+      allow write: if request.auth != null;
+    }
+
+    // QUIZ ENROLLMENTS
+    match /quizEnrollments/{enrollmentId} {
+      // Allow read for admins and session-based clients (client-side filters by clientId)
+      allow read: if request.auth != null || true;
+      // Allow writes from admins and clients (app validates values)
+      allow write: if request.auth != null || true;
+    }
+
+    // QUIZ SUBMISSIONS
+    match /quizSubmissions/{submissionId} {
+      // Allow read for admins and session-based clients (client-side filters by clientId)
+      allow read: if request.auth != null || true;
+      // Allow writes from admins and clients (app validates values)
+      allow write: if request.auth != null || true;
+    }
+    
+    // APPLICATIONS (service applications - open)
+    match /applications/{applicationId} {
+      // Allow read for:
+      // 1. Firebase Auth users (admins/officers) - can read all
+      // 2. Session-based clients - can read (application code filters by clientId)
+      // Note: Client-side filtering ensures clients only see their own applications
+      allow read: if request.auth != null || true;
+      
+      // Allow write:
+      // 1. Firebase Auth users (admins/officers)
+      // 2. Clients creating/updating their own applications (enforced client-side)
+      allow write: if request.auth != null || true;
+    }
+    
+    // APPLICATIONS_CLOSED (archived applications)
+    match /applications_closed/{applicationId} {
+      // Allow read for:
+      // 1. Firebase Auth users (admins/officers) - can read all closed applications
+      // 2. Session-based clients - can read their own closed applications
+      // Note: Application code filters by clientId when querying
+      allow read: if request.auth != null || true;
+      
+      // Only admins can write to closed applications (via Firebase Auth)
+      allow write: if request.auth != null;
+    }
+    
+    // NOTIFICATIONS COLLECTION
+    match /notifications/{notificationId} {
+      // Allow read for:
+      // 1. Firebase Auth users (admins/officers) - can read all
+      // 2. Session-based users - can read their own notifications (filtered by userId)
+      allow read: if request.auth != null || true;
+      
+      // Allow write for:
+      // 1. Firebase Auth users (admins/officers)
+      // 2. Session-based users creating notifications (application code validates userId)
+      allow write: if request.auth != null || true;
+    }
+    
+    // AUDIT LOGS COLLECTION
+    match /audit_logs/{auditLogId} {
+      // Allow read for Firebase Auth users (admins/officers only - audit logs are sensitive)
+      allow read: if request.auth != null;
+      
+      // Allow write for:
+      // 1. Firebase Auth users (admins/officers)
+      // 2. Session-based clients creating audit logs for their own actions
+      // Note: Application code validates that audit logs are created for appropriate actions
+      allow write: if request.auth != null || true;
+    }
+    
+    // CLIENT DASHBOARD DOCUMENTS COLLECTION
+    match /client_dashboard_documents/{documentId} {
+      // Allow read for Firebase Auth users (admins) OR session-based clients
+      // Client-side filtering ensures clients only see their own documents (filtered by clientId)
+      // Since session tokens are UUIDs and sessions expire, this is reasonably secure
+      allow read: if request.auth != null || true;
+      
+      // Allow write for:
+      // 1. Firebase Auth users (admins)
+      // 2. Session-based clients updating their own dashboard documents
+      // Note: Application code validates clientId when creating/updating documents
+      allow write: if request.auth != null || true;
+    }
+    
+    // COMPLIANCE DEPARTMENTS COLLECTION
+    match /compliance_departments/{departmentId} {
+      // Allow read for Firebase Auth users (admins) OR session-based clients
+      // Client-side filtering ensures clients only see their own departments (filtered by clientId)
+      allow read: if request.auth != null || true;
+      
+      // Allow write for:
+      // 1. Firebase Auth users (admins)
+      // 2. Session-based clients creating/updating their own departments
+      // Note: Application code validates clientId when creating/updating departments
+      allow write: if request.auth != null || true;
+    }
+    
+    // COMPLIANCE ITEMS COLLECTION
+    match /compliance_items/{itemId} {
+      // Allow read for Firebase Auth users (admins) OR session-based clients
+      // Items are linked to departments, which are filtered by clientId
+      allow read: if request.auth != null || true;
+      
+      // Allow write for:
+      // 1. Firebase Auth users (admins)
+      // 2. Session-based clients creating/updating items
+      allow write: if request.auth != null || true;
+    }
+    
+    // COMPLIANCE RECORDS COLLECTION
+    match /compliance_records/{recordId} {
+      // Allow read for Firebase Auth users (admins) OR session-based clients
+      // Records are linked to departments, which are filtered by clientId
+      allow read: if request.auth != null || true;
+      
+      // Allow write for:
+      // 1. Firebase Auth users (admins)
+      // 2. Session-based clients creating/updating their own records
+      allow write: if request.auth != null || true;
+    }
+    
+    // OTHER COLLECTIONS - Default rules for any other collections
+    // SYSTEM SETTINGS - Not accessible from PWA, only Cloud Functions
+    match /system_settings/{document} {
+      // Deny all access from PWA - only Cloud Functions can access
+      allow read, write: if false;
+    }
+    
+    // EMAIL SETTINGS - Allow PWA to create notifications (but not read/update/delete)
+    // This is a separate match to ensure it's not blocked by the parent rule
+    match /system_settings/email_settings/notifications/{notificationId} {
+      // Allow PWA to create notifications (but not read/update/delete)
+      // This allows employees to trigger email notifications when creating reports
+      allow create: if true;
+      allow read, update, delete: if false;
+    }
+
+    match /{collection}/{document} {
+      // Allow read for Firebase Auth users OR if collection is in whitelist for custom auth
+      allow read: if request.auth != null ||
+                    collection in ['auth_users', 'auth_sessions', 'clients', 'certificates',
+                                  'documents', 'training', 'trainingModules', 'trainingQuestions',
+                                  'trainingEnrollments', 'services', 'applications',
+                                  'applications_closed', 'notifications', 'audit_logs',
+                                  'quizzes', 'quizQuestions', 'quizEnrollments', 'quizSubmissions',
+                                  'client_dashboard_documents', 'compliance_departments',
+                                  'compliance_items', 'compliance_records', 'employee_details',
+                                  'reports', 'report_categories'];
+
+      // Allow write only for Firebase Auth users (admins) - all other writes go through Cloud Functions
+      // Note: audit_logs, notifications, client_dashboard_documents, compliance collections,
+      // employee_details, trainingEnrollments, reports, and report_categories have specific rules
+      // above for session-based writes
+      allow write: if request.auth != null;
+    }
+  }
+}

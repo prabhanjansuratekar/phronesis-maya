@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "phronesis-coaching"
+  },
+  "targets": {
+    "phronesis-coaching": {
+      "hosting": {
+        "phronesis-maya": [
+          "phronesis-maya"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

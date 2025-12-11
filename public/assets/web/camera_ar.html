@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta http-equiv="Permissions-Policy" content="camera=*, microphone=*">
+  <title>AR Camera</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      width: 100%;
+      height: 100vh;
+      overflow: hidden;
+      background: #000;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    #video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+    #canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: none;
+    }
+    #three-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      pointer-events: none;
+    }
+    #status {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 10;
+      color: white;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    #status::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ffd700;
+      animation: pulse 2s infinite;
+    }
+    #status.tracking::before {
+      background: #4ade80;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    #error {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 20;
+      color: white;
+      background: rgba(220, 38, 38, 0.9);
+      padding: 20px 24px;
+      border-radius: 12px;
+      text-align: center;
+      max-width: 80%;
+      display: none;
+    }
+    #error.show {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
+  <div id="three-container"></div>
+  <div id="status">Initializing...</div>
+  <div id="error"></div>
+
+  <!-- Load Three.js first -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  
+  <!-- Load GLTFLoader as ES module and attach to THREE -->
+  <script type="module">
+    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+    // Wait for THREE to be available
+    const waitForThree = setInterval(() => {
+      if (window.THREE) {
+        window.THREE.GLTFLoader = GLTFLoader;
+        window.dispatchEvent(new Event('gltfloader-ready'));
+        clearInterval(waitForThree);
+      }
+    }, 50);
+  </script>
+  
+  <!-- Load MediaPipe scripts from CDN with error handling -->
+  <script>
+    // Load MediaPipe scripts with error handling
+    function loadScript(src, onLoad, onError) {
+      const script = document.createElement('script');
+      script.src = src;
+      script.crossOrigin = 'anonymous';
+      script.onload = onLoad;
+      script.onerror = onError || (() => {
+        console.error('Failed to load script:', src);
+        const statusEl = document.getElementById('status');
+        if (statusEl) statusEl.textContent = 'Failed to load MediaPipe scripts';
+      });
+      document.head.appendChild(script);
+    }
+    
+    let scriptsLoaded = 0;
+    const totalScripts = 4;
+    
+    function onScriptLoaded() {
+      scriptsLoaded++;
+      console.log(`MediaPipe script ${scriptsLoaded}/${totalScripts} loaded`);
+      if (scriptsLoaded === totalScripts) {
+        console.log('All MediaPipe scripts loaded');
+        // Trigger a custom event when all scripts are loaded
+        window.dispatchEvent(new Event('mediapipe-scripts-loaded'));
+      }
+    }
+    
+    // Load scripts in order with error logging
+    // Try unpkg.com first (more reliable for npm packages), fallback to jsdelivr
+    const useUnpkg = true; // Switch to unpkg for better npm package support
+    
+    const baseUrl = useUnpkg ? 'https://unpkg.com' : 'https://cdn.jsdelivr.net/npm';
+    
+    loadScript(`${baseUrl}/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js`, 
+      () => {
+        console.log('✓ camera_utils.js loaded');
+        onScriptLoaded();
+      }, 
+      () => {
+        console.error('✗ Failed to load camera_utils.js');
+        onScriptLoaded(); // Still count it to avoid blocking
+      });
+    loadScript(`${baseUrl}/@mediapipe/control_utils@0.6.1629159509/control_utils.js`, 
+      () => {
+        console.log('✓ control_utils.js loaded');
+        onScriptLoaded();
+      },
+      () => {
+        console.error('✗ Failed to load control_utils.js');
+        onScriptLoaded();
+      });
+    loadScript(`${baseUrl}/@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js`, 
+      () => {
+        console.log('✓ drawing_utils.js loaded');
+        onScriptLoaded();
+      },
+      () => {
+        console.error('✗ Failed to load drawing_utils.js');
+        onScriptLoaded();
+      });
+    loadScript(`${baseUrl}/@mediapipe/face_mesh@0.4.1635988167/face_mesh.js`, 
+      () => {
+        console.log('✓ face_mesh.js loaded');
+        onScriptLoaded();
+      },
+      () => {
+        console.error('✗ Failed to load face_mesh.js');
+        onScriptLoaded();
+      });
+  </script>
+
+  <script>
+    const videoElement = document.getElementById('video');
+    const canvasElement = document.getElementById('canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const threeContainer = document.getElementById('three-container');
+    const statusElement = document.getElementById('status');
+    const errorElement = document.getElementById('error');
+
+    // Configuration
+    let currentJewelry = 'earring';
+    let jewelryScale = 1.0;
+    let jewelryPosX = 0.0;
+    let jewelryPosY = 0.0;
+    let jewelryRotation = 0.0;
+    let jewelrySide = 'left';
+
+    // Three.js setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    threeContainer.appendChild(renderer.domElement);
+
+    // Enhanced lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    directionalLight.position.set(5, 5, 5);
+    scene.add(directionalLight);
+    const pointLight1 = new THREE.PointLight(0xffffff, 0.6);
+    pointLight1.position.set(-5, 5, 5);
+    scene.add(pointLight1);
+
+    // Jewelry models
+    let earringModel = null;
+    let ringModel = null;
+    let currentModel = null;
+    let loader = null;
+    
+    // Wait for GLTFLoader to be available
+    function initLoader() {
+      if (window.THREE && window.THREE.GLTFLoader) {
+        loader = new THREE.GLTFLoader();
+        loadJewelryModels();
+      } else {
+        setTimeout(initLoader, 100);
+      }
+    }
+    
+    // Listen for GLTFLoader ready event
+    window.addEventListener('gltfloader-ready', () => {
+      initLoader();
+    });
+    
+    // Also try immediately in case it's already loaded
+    initLoader();
+
+    // Face landmarks
+    const LEFT_EAR_TOP = 234;
+    const LEFT_EAR_BOTTOM = 454;
+    const RIGHT_EAR_TOP = 454;
+    const RIGHT_EAR_BOTTOM = 234;
+    const NOSE_TIP = 4;
+    const LEFT_EYE = 33;
+    const RIGHT_EYE = 263;
+    const FACE_CENTER = 6;
+    const CHIN = 18;
+
+    let faceMesh;
+    let mediaPipeCamera;
+    let isTracking = false;
+    let lastLandmarks = null;
+    let modelsLoaded = { earring: false, ring: false };
+
+    function showError(message) {
+      errorElement.textContent = message;
+      errorElement.classList.add('show');
+      setTimeout(() => {
+        errorElement.classList.remove('show');
+      }, 5000);
+    }
+
+    function updateStatus(text, isTracking = false) {
+      statusElement.textContent = text;
+      statusElement.className = isTracking ? 'tracking' : 'detecting';
+    }
+
+    // Load jewelry models
+    function loadJewelryModels() {
+      if (!loader) {
+        console.warn('GLTFLoader not ready yet, retrying...');
+        setTimeout(loadJewelryModels, 200);
+        return;
+      }
+      
+      updateStatus('Loading jewelry models...', false);
+      
+      loader.load(
+        'earring_test.glb',
+        (gltf) => {
+          earringModel = gltf.scene;
+          earringModel.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          earringModel.scale.set(0.025, 0.025, 0.025);
+          earringModel.visible = false;
+          scene.add(earringModel);
+          modelsLoaded.earring = true;
+          console.log('✓ Earring loaded');
+          if (modelsLoaded.earring && modelsLoaded.ring) {
+            updateStatus('Ready! Position your face', false);
+          }
+        },
+        undefined,
+        (error) => {
+          console.error('Error loading earring:', error);
+          showError('Failed to load earring model');
+        }
+      );
+
+      loader.load(
+        'ring_test.glb',
+        (gltf) => {
+          ringModel = gltf.scene;
+          ringModel.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          ringModel.scale.set(0.035, 0.035, 0.035);
+          ringModel.visible = false;
+          scene.add(ringModel);
+          modelsLoaded.ring = true;
+          console.log('✓ Ring loaded');
+          if (modelsLoaded.earring && modelsLoaded.ring) {
+            updateStatus('Ready! Position your face', false);
+          }
+        },
+        undefined,
+        (error) => {
+          console.error('Error loading ring:', error);
+          showError('Failed to load ring model');
+        }
+      );
+    }
+
+    function screenToWorld(x, y, depth = 0.5) {
+      const vector = new THREE.Vector3();
+      vector.set(
+        (x / window.innerWidth) * 2 - 1,
+        -(y / window.innerHeight) * 2 + 1,
+        depth
+      );
+      vector.unproject(camera);
+      return vector;
+    }
+
+    function updateJewelryPosition(landmarks) {
+      if (!landmarks || landmarks.length < 468) {
+        if (currentModel) currentModel.visible = false;
+        isTracking = false;
+        updateStatus('Looking for face...', false);
+        return;
+      }
+
+      isTracking = true;
+      lastLandmarks = landmarks;
+      updateStatus('Tracking face ✓', true);
+
+      if (currentJewelry === 'earring') {
+        updateEarringPosition(landmarks);
+      } else {
+        updateRingPosition(landmarks);
+      }
+    }
+
+    function updateEarringPosition(landmarks) {
+      if (!earringModel || !modelsLoaded.earring) return;
+
+      const earTop = landmarks[jewelrySide === 'left' ? LEFT_EAR_TOP : RIGHT_EAR_TOP];
+      const earBottom = landmarks[jewelrySide === 'left' ? LEFT_EAR_BOTTOM : RIGHT_EAR_BOTTOM];
+      
+      const earCenterX = (earTop.x + earBottom.x) / 2;
+      const earCenterY = (earTop.y + earBottom.y) / 2;
+
+      const screenX = earCenterX * window.innerWidth;
+      const screenY = earCenterY * window.innerHeight;
+
+      const adjustedX = screenX + jewelryPosX * 15;
+      const adjustedY = screenY + jewelryPosY * 15;
+
+      const worldPos = screenToWorld(adjustedX, adjustedY, 0.25);
+
+      const faceCenter = landmarks[FACE_CENTER];
+      const eye = landmarks[jewelrySide === 'left' ? LEFT_EYE : RIGHT_EYE];
+      const angle = Math.atan2(eye.y - faceCenter.y, eye.x - faceCenter.x);
+
+      earringModel.position.copy(worldPos);
+      earringModel.rotation.z = angle + jewelryRotation * Math.PI / 180;
+      earringModel.scale.set(0.025 * jewelryScale, 0.025 * jewelryScale, 0.025 * jewelryScale);
+      earringModel.visible = true;
+      currentModel = earringModel;
+    }
+
+    function updateRingPosition(landmarks) {
+      if (!ringModel || !modelsLoaded.ring) return;
+
+      const faceCenter = landmarks[FACE_CENTER];
+      const chin = landmarks[CHIN];
+
+      const fingerX = faceCenter.x + 0.2;
+      const fingerY = chin.y + 0.15;
+
+      const screenX = fingerX * window.innerWidth;
+      const screenY = fingerY * window.innerHeight;
+
+      const adjustedX = screenX + jewelryPosX * 15;
+      const adjustedY = screenY + jewelryPosY * 15;
+
+      const worldPos = screenToWorld(adjustedX, adjustedY, 0.35);
+
+      ringModel.position.copy(worldPos);
+      ringModel.rotation.x = Math.PI / 2;
+      ringModel.rotation.z = jewelryRotation * Math.PI / 180;
+      ringModel.scale.set(0.035 * jewelryScale, 0.035 * jewelryScale, 0.035 * jewelryScale);
+      ringModel.visible = true;
+      currentModel = ringModel;
+    }
+
+    function onResults(results) {
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      
+      if (results.image) {
+        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+      }
+
+      if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+        const landmarks = results.multiFaceLandmarks[0];
+        updateJewelryPosition(landmarks);
+      } else {
+        updateJewelryPosition(null);
+      }
+
+      canvasCtx.restore();
+    }
+
+    function updateCamera() {
+      if (videoElement.videoWidth && videoElement.videoHeight) {
+        const aspect = videoElement.videoWidth / videoElement.videoHeight;
+        camera.aspect = aspect;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      updateCamera();
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('message', (event) => {
+      if (event.data.type === 'updateJewelry') {
+        const oldJewelry = currentJewelry;
+        
+        currentJewelry = event.data.jewelryType || currentJewelry;
+        jewelryScale = event.data.scale !== undefined ? event.data.scale : jewelryScale;
+        jewelryPosX = event.data.positionX !== undefined ? event.data.positionX : jewelryPosX;
+        jewelryPosY = event.data.positionY !== undefined ? event.data.positionY : jewelryPosY;
+        jewelryRotation = event.data.rotation !== undefined ? event.data.rotation : jewelryRotation;
+        jewelrySide = event.data.side || jewelrySide;
+
+        if (oldJewelry !== currentJewelry) {
+          if (earringModel) earringModel.visible = false;
+          if (ringModel) ringModel.visible = false;
+        }
+
+        if (lastLandmarks) {
+          updateJewelryPosition(lastLandmarks);
+        }
+      }
+    });
+
+    // Initialize camera - use global MediaPipe objects
+    async function initializeCamera() {
+      try {
+        updateStatus('Requesting camera access...', false);
+        
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('Camera API not available. Please use HTTPS or localhost.');
+        }
+        
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        });
+        
+        videoElement.srcObject = stream;
+        updateStatus('Camera ready, initializing AR...', false);
+        
+        videoElement.addEventListener('loadedmetadata', () => {
+          // Wait for MediaPipe scripts to load
+          const initMediaPipe = () => {
+            try {
+              // Use the classes we found in checkMediaPipeLoaded
+              const CameraClass = window.MediaPipeCamera;
+              const FaceMeshClass = window.MediaPipeFaceMesh;
+              
+              if (!CameraClass || !FaceMeshClass) {
+                // Retry after a short delay (max 20 retries = 10 seconds)
+                if (initMediaPipe.retryCount === undefined) {
+                  initMediaPipe.retryCount = 0;
+                }
+                if (initMediaPipe.retryCount < 20) {
+                  initMediaPipe.retryCount++;
+                  updateStatus(`Loading MediaPipe... (attempt ${initMediaPipe.retryCount}/20)`, false);
+                  setTimeout(initMediaPipe, 500);
+                  return;
+                } else {
+                  throw new Error('MediaPipe classes not found. Camera: ' + (CameraClass ? '✓' : '✗') + ', FaceMesh: ' + (FaceMeshClass ? '✓' : '✗'));
+                }
+              }
+              
+              updateStatus('MediaPipe found, initializing...', false);
+              console.log('Initializing FaceMesh with class:', FaceMeshClass);
+
+              faceMesh = new FaceMeshClass({
+                locateFile: (file) => {
+                  // Use unpkg for better npm package support
+                  return `https://unpkg.com/@mediapipe/face_mesh@0.4.1635988167/${file}`;
+                }
+              });
+
+              faceMesh.setOptions({
+                maxNumFaces: 1,
+                refineLandmarks: true,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+              });
+
+              faceMesh.onResults(onResults);
+
+              console.log('Initializing Camera with class:', CameraClass);
+              mediaPipeCamera = new CameraClass(videoElement, {
+                onFrame: async () => {
+                  await faceMesh.send({ image: videoElement });
+                },
+                width: videoElement.videoWidth || 1280,
+                height: videoElement.videoHeight || 720
+              });
+
+              mediaPipeCamera.start();
+              updateStatus('Ready! Position your face', false);
+            } catch (error) {
+              console.error('MediaPipe initialization error:', error);
+              showError('Failed to initialize AR: ' + error.message);
+              updateStatus('AR initialization failed', false);
+            }
+          };
+          
+          setTimeout(initMediaPipe, 1500);
+        });
+      } catch (error) {
+        console.error('Camera error:', error);
+        showError('Camera access denied. Please allow camera permissions in your browser settings.');
+        updateStatus('Camera access required', false);
+      }
+    }
+
+    function resizeCanvas() {
+      canvasElement.width = window.innerWidth;
+      canvasElement.height = window.innerHeight;
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+    }
+    
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // Initialize
+    camera.position.z = 1;
+    
+    // Start camera initialization when page loads
+    // loadJewelryModels() will be called by initLoader() after GLTFLoader is ready
+    animate();
+    
+    // Check if MediaPipe scripts are loaded
+    function checkMediaPipeLoaded() {
+      // Check multiple ways MediaPipe might be exposed
+      // MediaPipe UMD builds typically expose classes on window
+      let CameraClass = null;
+      let FaceMeshClass = null;
+      
+      // Try different ways to access MediaPipe classes
+      if (typeof window.Camera !== 'undefined') {
+        CameraClass = window.Camera;
+      } else if (typeof Camera !== 'undefined') {
+        CameraClass = Camera;
+      } else if (window.mediapipe && window.mediapipe.camera_utils && window.mediapipe.camera_utils.Camera) {
+        CameraClass = window.mediapipe.camera_utils.Camera;
+      }
+      
+      if (typeof window.FaceMesh !== 'undefined') {
+        FaceMeshClass = window.FaceMesh;
+      } else if (typeof FaceMesh !== 'undefined') {
+        FaceMeshClass = FaceMesh;
+      } else if (window.mediapipe && window.mediapipe.face_mesh && window.mediapipe.face_mesh.FaceMesh) {
+        FaceMeshClass = window.mediapipe.face_mesh.FaceMesh;
+      }
+      
+      // Debug: Log all window properties that might be MediaPipe related
+      const allWindowKeys = Object.keys(window);
+      const mediapipeKeys = allWindowKeys.filter(k => 
+        k.toLowerCase().includes('camera') || 
+        k.toLowerCase().includes('face') || 
+        k.toLowerCase().includes('mediapipe') ||
+        k.toLowerCase().includes('media')
+      );
+      
+      console.log('MediaPipe check:', {
+        windowCamera: typeof window.Camera,
+        globalCamera: typeof Camera,
+        windowFaceMesh: typeof window.FaceMesh,
+        globalFaceMesh: typeof FaceMesh,
+        mediapipe: !!window.mediapipe,
+        mediapipeKeys: mediapipeKeys,
+        hasCamera: !!CameraClass,
+        hasFaceMesh: !!FaceMeshClass,
+        allWindowKeysCount: allWindowKeys.length
+      });
+      
+      // Log first 50 window keys to see what's available
+      if (mediapipeKeys.length === 0) {
+        console.log('No MediaPipe-related keys found. Sample window keys:', allWindowKeys.slice(0, 50));
+      }
+      
+      if (CameraClass && FaceMeshClass) {
+        // Store classes globally for use in initializeCamera
+        window.MediaPipeCamera = CameraClass;
+        window.MediaPipeFaceMesh = FaceMeshClass;
+        updateStatus('MediaPipe loaded, starting camera...', false);
+        setTimeout(initializeCamera, 500);
+      } else {
+        const retryCount = checkMediaPipeLoaded.retryCount || 0;
+        if (retryCount < 50) {
+          checkMediaPipeLoaded.retryCount = retryCount + 1;
+          updateStatus(`Waiting for MediaPipe... (attempt ${retryCount + 1}/50)`, false);
+          setTimeout(checkMediaPipeLoaded, 300);
+        } else {
+          console.error('MediaPipe classes not found after 50 attempts');
+          console.error('Camera class found:', !!CameraClass);
+          console.error('FaceMesh class found:', !!FaceMeshClass);
+          console.error('Available window properties:', mediapipeKeys);
+          console.error('Full window object keys (first 100):', allWindowKeys.slice(0, 100));
+          // Show camera anyway even if MediaPipe fails
+          updateStatus('MediaPipe unavailable, showing camera only', false);
+          // Try to initialize camera without MediaPipe
+          initializeCameraWithoutMediaPipe();
+        }
+      }
+    }
+    
+    // Fallback: Initialize camera without MediaPipe (just show video)
+    async function initializeCameraWithoutMediaPipe() {
+      try {
+        updateStatus('Requesting camera access...', false);
+        
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('Camera API not available. Please use HTTPS or localhost.');
+        }
+        
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        });
+        
+        videoElement.srcObject = stream;
+        updateStatus('Camera ready (AR unavailable)', false);
+      } catch (error) {
+        console.error('Camera error:', error);
+        showError('Camera access denied. Please allow camera permissions in your browser settings.');
+        updateStatus('Camera access required', false);
+      }
+    }
+    
+    // Listen for MediaPipe scripts loaded event
+    window.addEventListener('mediapipe-scripts-loaded', () => {
+      console.log('MediaPipe scripts loaded event received');
+      updateStatus('MediaPipe scripts loaded, checking classes...', false);
+      setTimeout(checkMediaPipeLoaded, 500);
+    });
+    
+    // Wait for all scripts to load before initializing
+    window.addEventListener('load', () => {
+      updateStatus('Page loaded, checking MediaPipe scripts...', false);
+      // Give scripts time to execute
+      setTimeout(checkMediaPipeLoaded, 1500);
+    });
+    
+    // Also try if already loaded
+    if (document.readyState === 'complete') {
+      updateStatus('Checking MediaPipe scripts...', false);
+      setTimeout(checkMediaPipeLoaded, 1500);
+    }
+  </script>
+</body>
+</html>

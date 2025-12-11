@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+    <canvas id="canvas" style="width: 100vw; height: 100vh;"></canvas>
+    <script>
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        
+        const light = new THREE.AmbientLight(0xffffff, 1);
+        scene.add(light);
+        
+        const loader = new THREE.GLTFLoader();
+        loader.load('ring_test.glb', (gltf) => {
+            const ring = gltf.scene;
+            ring.scale.set(0.01, 0.01, 0.01);
+            scene.add(ring);
+            console.log('Ring loaded');
+        });
+        
+        camera.position.z = 5;
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
+

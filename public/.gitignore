@@ -1,0 +1,6 @@
+flutter_service_worker.js
+flutter.js
+main.dart.js
+*.part.js
+*.part.js.map
+*.js.map

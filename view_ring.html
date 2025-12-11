@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ring 3D Viewer</title>
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.3.0/model-viewer.min.js"></script>
+    <script nomodule src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.3.0/model-viewer-legacy.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        model-viewer {
+            width: 100%;
+            max-width: 600px;
+            height: 600px;
+            background: #f0f0f0;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: block;
+        }
+        model-viewer::part(default-poster) {
+            background-color: #e0e0e0;
+        }
+        .error {
+            color: #d32f2f;
+            margin-top: 20px;
+            padding: 10px;
+            background: #ffebee;
+            border-radius: 4px;
+            max-width: 600px;
+        }
+        .loading {
+            color: #666;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <model-viewer
+        src="ring_test.glb"
+        alt="3D Ring"
+        auto-rotate
+        camera-controls
+        interaction-policy="allow-when-focused"
+        loading="eager"
+        auto-rotate-delay="0"
+        camera-target="auto auto auto"
+        camera-orbit="auto auto auto"
+        field-of-view="45deg"
+    >
+        <div class="loading" slot="poster">Loading ring model...</div>
+    </model-viewer>
+    <div id="error" class="error" style="display: none;"></div>
+    <div id="status" style="margin-top: 10px; color: #666;"></div>
+    <script>
+        const errorDiv = document.getElementById('error');
+        const statusDiv = document.getElementById('status');
+        
+        function setupViewer() {
+            const viewer = document.querySelector('model-viewer');
+            if (!viewer) {
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = 'Model-viewer element not found';
+                return;
+            }
+            
+            statusDiv.textContent = 'Model-viewer ready';
+            
+            viewer.addEventListener('error', (event) => {
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = 'Error loading model: ' + (event.detail?.message || 'Unknown error');
+                console.error('Model viewer error:', event.detail);
+                statusDiv.textContent = 'Error occurred';
+            });
+            
+            viewer.addEventListener('load', () => {
+                console.log('Model loaded successfully');
+                console.log('Model bounds:', viewer.getBoundingBox());
+                statusDiv.textContent = 'Model loaded successfully!';
+                statusDiv.style.color = '#4caf50';
+            });
+            
+            viewer.addEventListener('model-visibility', (event) => {
+                console.log('Model visibility:', event.detail.visible);
+            });
+            
+            viewer.addEventListener('progress', (event) => {
+                const progress = event.detail.totalProgress * 100;
+                statusDiv.textContent = `Loading: ${Math.round(progress)}%`;
+            });
+        }
+        
+        if (location.protocol === 'file:') {
+            errorDiv.style.display = 'block';
+            errorDiv.innerHTML = '⚠️ File protocol detected. Please use a local server:<br>' +
+                'Run: <code>python -m http.server 8000</code> then open <code>http://localhost:8000/view_ring.html</code>';
+        } else {
+            statusDiv.textContent = 'Waiting for model-viewer to load...';
+            
+            if (customElements.get('model-viewer')) {
+                setupViewer();
+            } else {
+                customElements.whenDefined('model-viewer').then(() => {
+                    statusDiv.textContent = 'Model-viewer loaded';
+                    setupViewer();
+                }).catch((err) => {
+                    errorDiv.style.display = 'block';
+                    errorDiv.textContent = 'Error: model-viewer failed to load. ' + err.message;
+                    console.error('Model-viewer load error:', err);
+                });
+            }
+        }
+    </script>
+</body>
+</html>
+
