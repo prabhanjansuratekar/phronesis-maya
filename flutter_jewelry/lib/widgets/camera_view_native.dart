@@ -64,6 +64,12 @@ class _CameraViewNativeState extends State<CameraViewNative> {
   static const double _maxScale = 5.0; // Larger maximum scale
   Timer? _detectionTimer;
   bool _isDetecting = false;
+  // Track per-ear visibility recency to hide when ear not visible
+  final Map<String, DateTime> _earLastSeen = {
+    'left': DateTime.fromMillisecondsSinceEpoch(0),
+    'right': DateTime.fromMillisecondsSinceEpoch(0),
+  };
+  static const int _earHideThresholdMs = 700; // hide ear after 0.7s of not seeing it
 
   @override
   void initState() {
@@ -574,29 +580,14 @@ class _CameraViewNativeState extends State<CameraViewNative> {
     final isFrontCamera = _currentCameraDirection == CameraLensDirection.front;
     final leftEar = landmarks[FaceLandmarkType.leftEar];
     final rightEar = landmarks[FaceLandmarkType.rightEar];
-    final leftCheek = landmarks[FaceLandmarkType.leftCheek];
-    final rightCheek = landmarks[FaceLandmarkType.rightCheek];
-    final leftEye = landmarks[FaceLandmarkType.leftEye];
-    final rightEye = landmarks[FaceLandmarkType.rightEye];
-    
+    final now = DateTime.now();
     List<Offset> positions = [];
     
-    // Left ear position
-    if (leftEar != null || leftCheek != null) {
-      double x, y;
-      if (leftEar != null) {
-        x = leftEar.position.x.toDouble();
-        y = leftEar.position.y.toDouble();
-        debugPrint('Left ear landmark: image($x, $y)');
-      } else if (leftCheek != null && leftEye != null) {
-        x = leftCheek.position.x.toDouble();
-        y = (leftEye.position.y.toDouble() + leftCheek.position.y.toDouble()) / 2.0;
-        debugPrint('Left ear (cheek+eye fallback): image($x, $y)');
-      } else {
-        x = leftCheek!.position.x.toDouble();
-        y = leftCheek.position.y.toDouble();
-        debugPrint('Left ear (cheek fallback): image($x, $y)');
-      }
+    // Left ear position (no fallback: hide if not visible)
+    if (leftEar != null) {
+      final x = leftEar.position.x.toDouble();
+      final y = leftEar.position.y.toDouble();
+      debugPrint('Left ear landmark: image($x, $y)');
       
       // ML Kit landmarks are returned in InputImage coordinate space
       // InputImage has rotation 270deg, so coordinates are already rotated
@@ -630,26 +621,16 @@ class _CameraViewNativeState extends State<CameraViewNative> {
       final screenX = (displayX * scaleFactor) + offsetX;
       final screenY = (displayY * scaleFactor) + offsetY;
       
-      debugPrint('Left ear: image($x, $y) inputImg($inputImageWidth, $inputImageHeight) norm($normalizedX, $normalizedY) -> display($displayX, $displayY) -> screen($screenX, $screenY)');
+      debugPrint('Left ear: image($x, $y) -> screen($screenX, $screenY)');
       positions.add(Offset(screenX, screenY));
+      _earLastSeen['left'] = now;
     }
     
-    // Right ear position
-    if (rightEar != null || rightCheek != null) {
-      double x, y;
-      if (rightEar != null) {
-        x = rightEar.position.x.toDouble();
-        y = rightEar.position.y.toDouble();
-        debugPrint('Right ear landmark: image($x, $y)');
-      } else if (rightCheek != null && rightEye != null) {
-        x = rightCheek.position.x.toDouble();
-        y = (rightEye.position.y.toDouble() + rightCheek.position.y.toDouble()) / 2.0;
-        debugPrint('Right ear (cheek+eye fallback): image($x, $y)');
-      } else {
-        x = rightCheek!.position.x.toDouble();
-        y = rightCheek.position.y.toDouble();
-        debugPrint('Right ear (cheek fallback): image($x, $y)');
-      }
+    // Right ear position (no fallback: hide if not visible)
+    if (rightEar != null) {
+      final x = rightEar.position.x.toDouble();
+      final y = rightEar.position.y.toDouble();
+      debugPrint('Right ear landmark: image($x, $y)');
       
       // ML Kit landmarks are returned in InputImage coordinate space
       // InputImage has rotation 270deg, so coordinates are already rotated
@@ -683,13 +664,28 @@ class _CameraViewNativeState extends State<CameraViewNative> {
       final screenX = (displayX * scaleFactor) + offsetX;
       final screenY = (displayY * scaleFactor) + offsetY;
       
-      debugPrint('Right ear: image($x, $y) inputImg($inputImageWidth, $inputImageHeight) norm($normalizedX, $normalizedY) -> display($displayX, $displayY) -> screen($screenX, $screenY)');
+      debugPrint('Right ear: image($x, $y) -> screen($screenX, $screenY)');
       positions.add(Offset(screenX, screenY));
+      _earLastSeen['right'] = now;
     }
     
+    // Filter by recency so occluded ears hide after a short timeout
+    final yaw = _detectedFace?.headEulerAngleY ?? 0.0;
+    final filtered = <Offset>[];
+    for (final pos in positions) {
+      final isLeft = pos.dx >= screenSize.width / 2;
+      final last = _earLastSeen[isLeft ? 'left' : 'right']!;
+      final recentlySeen = now.difference(last).inMilliseconds <= _earHideThresholdMs;
+      // Yaw-based occlusion: when turning right (yaw < -20), hide left; turning left (yaw > 20), hide right.
+      final occludedByYaw = (yaw > 20 && !isLeft) || (yaw < -20 && isLeft);
+      if (recentlySeen && !occludedByYaw) {
+        filtered.add(pos);
+      }
+    }
+
     // Remove duplicates (positions that are very close to each other)
     List<Offset> uniquePositions = [];
-    for (final pos in positions) {
+    for (final pos in filtered) {
       bool isDuplicate = false;
       for (final existing in uniquePositions) {
         final distance = (pos - existing).distance;
@@ -703,7 +699,7 @@ class _CameraViewNativeState extends State<CameraViewNative> {
       }
     }
     
-    debugPrint('Total earring positions: ${positions.length}, unique: ${uniquePositions.length}');
+    debugPrint('Total earring positions: ${filtered.length}, unique: ${uniquePositions.length}');
     return uniquePositions;
   }
   
@@ -1185,32 +1181,16 @@ class _CameraViewNativeState extends State<CameraViewNative> {
       debugPrint('Clamped position from $earPosition to $clampedPosition');
     }
     
-    // Calculate appropriate scale based on face size and screen dimensions
-    // For earrings, we want them to be proportional to face size
-    // Typical earring size relative to face: about 1/8 to 1/10 of face width
-    double autoScale = 0.5; // Increased base scale for better visibility (50% of base size = 75px)
-    
+    // Scale earrings based on face width: target ~10% of face width, clamped for visibility
+    double scaledSize = 110.0; // default
     if (_detectedFace != null) {
-      // Use face bounding box to calculate proportional scale
       final face = _detectedFace!;
       final faceWidth = face.boundingBox.width;
-      final faceHeight = face.boundingBox.height;
-      final faceSize = (faceWidth + faceHeight) / 2;
-      
-      // Calculate scale based on face size relative to screen
-      // Target: earring should be about 8-10% of face width
-      final screenDiagonal = (screenSize.width * screenSize.width + screenSize.height * screenSize.height) / (screenSize.width + screenSize.height);
-      final faceScaleFactor = faceSize / screenDiagonal;
-      
-      // Scale earring proportionally: larger face = larger earring
-      autoScale = (faceScaleFactor * 2.0).clamp(0.4, 0.8); // Between 40% and 80% of base size for better visibility
-      
-      debugPrint('Face size: ${faceWidth}x${faceHeight}, scale factor: $faceScaleFactor, autoScale: $autoScale');
+      final targetSize = faceWidth * 0.10; // 10% of face width
+      scaledSize = targetSize.clamp(70.0, 150.0); // smaller than before
+      debugPrint('Face width: $faceWidth -> earring target size: $targetSize clamped to $scaledSize');
     }
-    
-    // Use auto scale directly (don't multiply by _jewelryScale which starts at 1.0)
-    final earringScale = autoScale.clamp(0.4, 1.0); // Ensure good visibility (60-150px)
-    final scaledSize = _baseSize * earringScale;
+    final earringScale = scaledSize / _baseSize;
     debugPrint('Earring $index final scale: $earringScale, scaled size: $scaledSize, position: $clampedPosition');
     
     debugPrint('Earring widget $index: Creating at clamped position: $clampedPosition, scale: $earringScale, scaledSize: $scaledSize');
@@ -1246,6 +1226,7 @@ class _CameraViewNativeState extends State<CameraViewNative> {
           _baseRotation = _rotationAngle;
         },
         child: Transform.rotate(
+          // Keep earrings vertical to mimic gravity; only user gestures rotate
           angle: _rotationAngle,
           child: SizedBox(
             width: scaledSize,
