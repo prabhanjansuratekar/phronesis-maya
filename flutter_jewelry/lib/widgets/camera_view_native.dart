@@ -1546,4 +1546,3 @@ class _CameraViewNativeState extends State<CameraViewNative> {
     );
   }
 }
-
