@@ -345,7 +345,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
             children: [
               ElevatedButton.icon(
                 onPressed: () => _show3DViewer(title, glbAssetPath),
@@ -355,9 +357,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   backgroundColor: Colors.white.withValues(alpha: 0.12),
                   foregroundColor: Colors.white,
                   elevation: 0,
+                  minimumSize: const Size(0, 44),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
               ),
-              const SizedBox(width: 12),
               ElevatedButton(
                 onPressed: enableTry ? onTry : null,
                 style: ElevatedButton.styleFrom(
@@ -365,6 +369,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       enableTry ? Colors.amber.shade300 : Colors.grey.shade700,
                   foregroundColor: enableTry ? Colors.black : Colors.white,
                   elevation: enableTry ? 2 : 0,
+                  minimumSize: const Size(0, 44),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
                 child: Text(enableTry ? 'Try virtually' : 'Coming soon'),
               ),
