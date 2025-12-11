@@ -163,44 +163,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildSideButton(String side, String label, String tooltip) {
-    final isSelected = earringSide == side;
-    return Tooltip(
-      message: tooltip,
-      child: GestureDetector(
-        onTap: () {
-          setState(() {
-            earringSide = side;
-          });
-        },
-        child: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: isSelected
-                ? Colors.amber.shade300
-                : Colors.white.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: isSelected ? Colors.amber.shade300 : Colors.white.withValues(alpha: 0.3),
-              width: 2,
-            ),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? Colors.black : Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildProductCard({
     required String title,
     required String subtitle,
