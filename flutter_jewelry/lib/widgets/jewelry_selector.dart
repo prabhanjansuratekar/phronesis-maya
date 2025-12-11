@@ -12,20 +12,23 @@ class JewelrySelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.all(16),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2a2a2a).withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildJewelryButton('earring', 'Earring', Icons.diamond_outlined),
-          const SizedBox(width: 12),
-          _buildJewelryButton('ring_disabled', 'Ring (Coming soon)', Icons.circle_outlined, enabled: false),
-        ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF2a2a2a).withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildJewelryButton('earring', 'Earring', Icons.diamond_outlined),
+            const SizedBox(width: 12),
+            _buildJewelryButton('ring_disabled', 'Ring (Coming soon)', Icons.circle_outlined, enabled: false),
+          ],
+        ),
       ),
     );
   }
