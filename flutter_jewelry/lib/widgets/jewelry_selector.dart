@@ -24,16 +24,16 @@ class JewelrySelector extends StatelessWidget {
         children: [
           _buildJewelryButton('earring', 'Earring', Icons.diamond_outlined),
           const SizedBox(width: 12),
-          _buildJewelryButton('ring', 'Ring', Icons.circle_outlined),
+          _buildJewelryButton('ring_disabled', 'Ring (Coming soon)', Icons.circle_outlined, enabled: false),
         ],
       ),
     );
   }
 
-  Widget _buildJewelryButton(String type, String label, IconData icon) {
+  Widget _buildJewelryButton(String type, String label, IconData icon, {bool enabled = true}) {
     final isSelected = selectedJewelry == type;
     return GestureDetector(
-      onTap: () => onJewelryChanged(type),
+      onTap: enabled ? () => onJewelryChanged(type) : null,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         decoration: BoxDecoration(
@@ -51,14 +51,18 @@ class JewelrySelector extends StatelessWidget {
           children: [
             Icon(
               icon,
-              color: isSelected ? Colors.amber.shade300 : Colors.grey.shade400,
+              color: enabled
+                  ? (isSelected ? Colors.amber.shade300 : Colors.grey.shade400)
+                  : Colors.grey.shade600,
               size: 20,
             ),
             const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.amber.shade300 : Colors.grey.shade400,
+                color: enabled
+                    ? (isSelected ? Colors.amber.shade300 : Colors.grey.shade400)
+                    : Colors.grey.shade600,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 fontSize: 14,
               ),

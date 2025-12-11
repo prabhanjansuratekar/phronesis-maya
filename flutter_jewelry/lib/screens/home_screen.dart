@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:model_viewer_plus/model_viewer_plus.dart';
 import '../widgets/camera_view.dart';
 import '../widgets/jewelry_selector.dart';
 import '../widgets/control_panel.dart';
@@ -226,71 +227,26 @@ class _HomeScreenState extends State<HomeScreen> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 48),
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.1),
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      _buildFeatureItem(Icons.camera_alt, 'Real-time AR'),
-                      const SizedBox(height: 16),
-                      _buildFeatureItem(Icons.tune, 'Adjustable Fit'),
-                      const SizedBox(height: 16),
-                      _buildFeatureItem(Icons.face, 'Face Tracking'),
-                    ],
-                  ),
+                const SizedBox(height: 32),
+                _buildProductCard(
+                  title: 'Earrings',
+                  subtitle: 'Try virtually and view in 3D',
+                  glbAssetPath: 'web/earring_test.glb',
+                  enableTry: true,
+                  onTry: () {
+                    setState(() {
+                      selectedJewelry = 'earring';
+                      cameraEnabled = true;
+                    });
+                  },
                 ),
-                const SizedBox(height: 48),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        cameraEnabled = true;
-                      });
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.amber.shade300,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      elevation: 4,
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.camera_alt, size: 24),
-                        SizedBox(width: 12),
-                        Text(
-                          'Start AR Try-On',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                // Jewelry selector on welcome screen
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: JewelrySelector(
-                    selectedJewelry: selectedJewelry,
-                    onJewelryChanged: (jewelry) {
-                      setState(() {
-                        selectedJewelry = jewelry;
-                      });
-                    },
-                  ),
+                const SizedBox(height: 16),
+                _buildProductCard(
+                  title: 'Ring',
+                  subtitle: '3D preview available • Try-on coming soon',
+                  glbAssetPath: 'web/ring_test.glb',
+                  enableTry: false,
+                  onTry: () {},
                 ),
               ],
             ),
@@ -351,6 +307,125 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildProductCard({
+    required String title,
+    required String subtitle,
+    required String glbAssetPath,
+    required bool enableTry,
+    required VoidCallback onTry,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: TextStyle(
+              color: Colors.grey.shade400,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: () => _show3DViewer(title, glbAssetPath),
+                icon: const Icon(Icons.threed_rotation),
+                label: const Text('View 3D'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white.withValues(alpha: 0.12),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: enableTry ? onTry : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor:
+                      enableTry ? Colors.amber.shade300 : Colors.grey.shade700,
+                  foregroundColor: enableTry ? Colors.black : Colors.white,
+                  elevation: enableTry ? 2 : 0,
+                ),
+                child: Text(enableTry ? 'Try virtually' : 'Coming soon'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _show3DViewer(String title, String glbAssetPath) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '$title 3D Preview',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 360,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: ModelViewer(
+                    src: glbAssetPath,
+                    alt: '$title 3D model',
+                    ar: false,
+                    autoRotate: true,
+                    cameraControls: true,
+                    backgroundColor: Colors.transparent,
+                    interactionPrompt: InteractionPrompt.none,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

@@ -673,7 +673,8 @@ class _CameraViewNativeState extends State<CameraViewNative> {
     final yaw = _detectedFace?.headEulerAngleY ?? 0.0;
     final filtered = <Offset>[];
     for (final pos in positions) {
-      final isLeft = pos.dx >= screenSize.width / 2;
+      // Screen origin is top-left; left ear has smaller X.
+      final isLeft = pos.dx < screenSize.width / 2;
       final last = _earLastSeen[isLeft ? 'left' : 'right']!;
       final recentlySeen = now.difference(last).inMilliseconds <= _earHideThresholdMs;
       // Yaw-based occlusion: when turning right (yaw < -20), hide left; turning left (yaw > 20), hide right.
