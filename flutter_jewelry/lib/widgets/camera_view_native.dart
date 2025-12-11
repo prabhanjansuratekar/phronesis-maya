@@ -581,7 +581,7 @@ class _CameraViewNativeState extends State<CameraViewNative> {
     final leftEar = landmarks[FaceLandmarkType.leftEar];
     final rightEar = landmarks[FaceLandmarkType.rightEar];
     final now = DateTime.now();
-    List<Offset> positions = [];
+    final List<MapEntry<String, Offset>> positions = [];
     
     // Left ear position (no fallback: hide if not visible)
     if (leftEar != null) {
@@ -622,7 +622,7 @@ class _CameraViewNativeState extends State<CameraViewNative> {
       final screenY = (displayY * scaleFactor) + offsetY;
       
       debugPrint('Left ear: image($x, $y) -> screen($screenX, $screenY)');
-      positions.add(Offset(screenX, screenY));
+      positions.add(MapEntry('left', Offset(screenX, screenY)));
       _earLastSeen['left'] = now;
     }
     
@@ -665,43 +665,42 @@ class _CameraViewNativeState extends State<CameraViewNative> {
       final screenY = (displayY * scaleFactor) + offsetY;
       
       debugPrint('Right ear: image($x, $y) -> screen($screenX, $screenY)');
-      positions.add(Offset(screenX, screenY));
+      positions.add(MapEntry('right', Offset(screenX, screenY)));
       _earLastSeen['right'] = now;
     }
     
     // Filter by recency so occluded ears hide after a short timeout
     final yaw = _detectedFace?.headEulerAngleY ?? 0.0;
-    final filtered = <Offset>[];
-    for (final pos in positions) {
-      // Screen origin is top-left; left ear has smaller X.
-      final isLeft = pos.dx < screenSize.width / 2;
-      final last = _earLastSeen[isLeft ? 'left' : 'right']!;
+    final filtered = <MapEntry<String, Offset>>[];
+    for (final entry in positions) {
+      final side = entry.key; // 'left' or 'right'
+      final pos = entry.value;
+      final last = _earLastSeen[side]!;
       final recentlySeen = now.difference(last).inMilliseconds <= _earHideThresholdMs;
       // Yaw-based occlusion: when turning right (yaw < -20), hide left; turning left (yaw > 20), hide right.
-      final occludedByYaw = (yaw > 20 && !isLeft) || (yaw < -20 && isLeft);
+      final occludedByYaw = (yaw > 20 && side == 'right') || (yaw < -20 && side == 'left');
       if (recentlySeen && !occludedByYaw) {
-        filtered.add(pos);
+        filtered.add(entry);
       }
     }
 
-    // Remove duplicates (positions that are very close to each other)
-    List<Offset> uniquePositions = [];
-    for (final pos in filtered) {
-      bool isDuplicate = false;
-      for (final existing in uniquePositions) {
-        final distance = (pos - existing).distance;
-        if (distance < 10.0) { // If positions are within 10 pixels, consider duplicate
-          isDuplicate = true;
-          break;
-        }
+    // Keep one position per side (dedupe) and avoid near-duplicates
+    final Map<String, Offset> uniqueBySide = {};
+    for (final entry in filtered) {
+      final side = entry.key;
+      final pos = entry.value;
+      if (!uniqueBySide.containsKey(side)) {
+        uniqueBySide[side] = pos;
+        continue;
       }
-      if (!isDuplicate) {
-        uniquePositions.add(pos);
+      final existing = uniqueBySide[side]!;
+      if ((pos - existing).distance > 10.0) {
+        uniqueBySide[side] = pos;
       }
     }
     
-    debugPrint('Total earring positions: ${filtered.length}, unique: ${uniquePositions.length}');
-    return uniquePositions;
+    debugPrint('Total earring positions: ${filtered.length}, unique: ${uniqueBySide.length}');
+    return uniqueBySide.values.toList();
   }
   
   // Get earring positions from MediaPipe landmarks (more accurate)
