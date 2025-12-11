@@ -3,7 +3,6 @@ import 'package:camera/camera.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 import '../widgets/camera_view.dart';
 import '../widgets/jewelry_selector.dart';
-import '../widgets/control_panel.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,12 +13,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String selectedJewelry = 'earring';
-  String earringSide = 'left';
-  double scale = 1.0;
-  double positionX = 0.0;
-  double positionY = 0.0;
-  double rotation = 0.0;
-  bool showControls = true;
   bool cameraEnabled = false;
   CameraLensDirection cameraDirection = CameraLensDirection.front;
 
@@ -52,125 +45,23 @@ class _HomeScreenState extends State<HomeScreen> {
                 });
               },
             ),
-            IconButton(
-              icon: Icon(
-                showControls ? Icons.visibility_off : Icons.visibility,
-                color: Colors.white,
-              ),
-              tooltip: showControls ? 'Hide Controls' : 'Show Controls',
-              onPressed: () {
-                setState(() {
-                  showControls = !showControls;
-                });
-              },
-            ),
           ],
         ],
       ),
       body: Stack(
         children: [
-          // Camera view or welcome screen
           if (cameraEnabled)
             CameraView(
               jewelryType: selectedJewelry,
-              scale: scale,
-              positionX: positionX,
-              positionY: positionY,
-              rotation: rotation,
-              side: earringSide,
+              scale: 1.0,
+              positionX: 0.0,
+              positionY: 0.0,
+              rotation: 0.0,
+              side: 'left',
               cameraDirection: cameraDirection,
             )
           else
             _buildWelcomeScreen(),
-
-          // Control panels
-          if (showControls && cameraEnabled) ...[
-            // Top: Jewelry selector
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      JewelrySelector(
-                        selectedJewelry: selectedJewelry,
-                        onJewelryChanged: (jewelry) {
-                          setState(() {
-                            selectedJewelry = jewelry;
-                          });
-                        },
-                      ),
-                      // Side selector for earrings
-                      if (selectedJewelry == 'earring')
-                        Container(
-                          margin: const EdgeInsets.only(top: 12),
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.6),
-                            borderRadius: BorderRadius.circular(28),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _buildSideButton('left', 'L', 'Left Ear'),
-                              const SizedBox(width: 8),
-                              _buildSideButton('right', 'R', 'Right Ear'),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // Bottom: Control panel
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                child: ControlPanel(
-                  scale: scale,
-                  positionX: positionX,
-                  positionY: positionY,
-                  rotation: rotation,
-                  onScaleChanged: (value) {
-                    setState(() {
-                      scale = value;
-                    });
-                  },
-                  onPositionXChanged: (value) {
-                    setState(() {
-                      positionX = value;
-                    });
-                  },
-                  onPositionYChanged: (value) {
-                    setState(() {
-                      positionY = value;
-                    });
-                  },
-                  onRotationChanged: (value) {
-                    setState(() {
-                      rotation = value;
-                    });
-                  },
-                  onReset: () {
-                    setState(() {
-                      scale = 1.0;
-                      positionX = 0.0;
-                      positionY = 0.0;
-                      rotation = 0.0;
-                    });
-                  },
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -219,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Try on ${selectedJewelry == 'earring' ? 'earrings' : 'rings'} in real-time using AR',
+                  'Try on earrings in real-time using AR',
                   style: TextStyle(
                     color: Colors.grey.shade400,
                     fontSize: 16,

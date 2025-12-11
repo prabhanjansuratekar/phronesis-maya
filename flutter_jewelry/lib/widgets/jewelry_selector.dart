@@ -12,31 +12,28 @@ class JewelrySelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    return Container(
+      margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFF2a2a2a).withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildJewelryButton('earring', 'Earring', Icons.diamond_outlined),
-            const SizedBox(width: 12),
-            _buildJewelryButton('ring_disabled', 'Ring (Coming soon)', Icons.circle_outlined, enabled: false),
-          ],
-        ),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2a2a2a).withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildJewelryButton('earring', 'Earring', Icons.diamond_outlined),
+          const SizedBox(width: 12),
+          _buildJewelryButton('ring', 'Ring', Icons.circle_outlined),
+        ],
       ),
     );
   }
 
-  Widget _buildJewelryButton(String type, String label, IconData icon, {bool enabled = true}) {
+  Widget _buildJewelryButton(String type, String label, IconData icon) {
     final isSelected = selectedJewelry == type;
     return GestureDetector(
-      onTap: enabled ? () => onJewelryChanged(type) : null,
+      onTap: () => onJewelryChanged(type),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         decoration: BoxDecoration(
@@ -54,18 +51,14 @@ class JewelrySelector extends StatelessWidget {
           children: [
             Icon(
               icon,
-              color: enabled
-                  ? (isSelected ? Colors.amber.shade300 : Colors.grey.shade400)
-                  : Colors.grey.shade600,
+              color: isSelected ? Colors.amber.shade300 : Colors.grey.shade400,
               size: 20,
             ),
             const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
-                color: enabled
-                    ? (isSelected ? Colors.amber.shade300 : Colors.grey.shade400)
-                    : Colors.grey.shade600,
+                color: isSelected ? Colors.amber.shade300 : Colors.grey.shade400,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 fontSize: 14,
               ),
@@ -76,4 +69,3 @@ class JewelrySelector extends StatelessWidget {
     );
   }
 }
-
